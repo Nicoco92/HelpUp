@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { User } from '../users/entities/user.entity';
+import { Mission } from '../missions/entities/mission.entity';
 
 interface ExpoPushMessage {
   to: string;
@@ -83,6 +84,22 @@ export class NotificationsService {
     if (messages.length > 0) {
       await this.sendExpoBulkNotifications(messages);
     }
+  }
+
+  /**
+   * Notify nearby providers when a mission is published.
+   */
+  async notifyNearbyProviders(
+    providers: User[],
+    mission: Mission,
+  ): Promise<void> {
+    if (!providers.length) return;
+
+    const title = 'Nouvelle mission disponible !';
+    const body = `La mission "${mission.title}" vient d'être publiée près de chez vous.`;
+    const data = { missionId: mission.id };
+
+    await this.sendBulkPushNotifications(providers, title, body, data);
   }
 
   async getUserNotifications(

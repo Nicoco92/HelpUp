@@ -48,7 +48,12 @@ export class PaymentsService {
    * For STRIPE payment: full amount hold
    * For ON_SITE payment: commission-only hold
    */
-  async createPaymentHold(
+  /**
+   * Step 1: Create a payment hold (authorization) when client selects a provider.
+   * For STRIPE payment: full amount hold
+   * For ON_SITE payment: commission-only hold
+   */
+  async createPaymentIntent(
     mission: Mission,
     client: User,
     provider: User,
@@ -106,7 +111,7 @@ export class PaymentsService {
   /**
    * Step 2: Capture the payment after mission completion.
    */
-  async capturePayment(missionId: string): Promise<Transaction> {
+  async captureAndTransfer(missionId: string): Promise<Transaction> {
     const transaction = await this.transactionRepository.findOne({
       where: { mission: { id: missionId } },
       relations: ['mission', 'provider'],
@@ -190,9 +195,9 @@ export class PaymentsService {
   // =====================
 
   /**
-   * Create a Stripe Connect account for a provider.
+   * Generate a Stripe Connect Onboarding Link for a provider.
    */
-  async createConnectAccount(user: User): Promise<string> {
+  async generateOnboardingLink(user: User): Promise<string> {
     const account = await this.stripe.accounts.create({
       type: 'express',
       email: user.email,

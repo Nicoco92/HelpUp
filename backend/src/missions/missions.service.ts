@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { Mission } from './entities/mission.entity';
 import { MissionApplication } from './entities/mission-application.entity';
 import { MissionCategory } from './entities/mission-category.entity';
@@ -14,6 +14,8 @@ import { User } from '../users/entities/user.entity';
 import { MissionStatus } from './enums/mission-status.enum';
 import { ApplicationStatus } from './enums/application-status.enum';
 import { Role } from '../users/enums/role.enum';
+import { NotificationsService } from '../notifications/notifications.service';
+import { PaymentsService } from '../payments/payments.service';
 
 /**
  * State machine: allowed transitions for mission status.
@@ -39,6 +41,9 @@ export class MissionsService {
     private applicationsRepository: Repository<MissionApplication>,
     @InjectRepository(MissionCategory)
     private categoriesRepository: Repository<MissionCategory>,
+    private notificationsService: NotificationsService,
+    private paymentsService: PaymentsService,
+    private dataSource: DataSource,
   ) {}
 
   // --- Categories ---
@@ -151,10 +156,17 @@ export class MissionsService {
    * Find nearby providers for a mission location (used for push notifications).
    */
   async findNearbyProviders(
-    lat: number,
-    lng: number,
+    missionId: string,
     radiusKm: number,
   ): Promise<User[]> {
+    const mission = await this.missionsRepository.findOne({
+      where: { id: missionId },
+    });
+
+    if (!mission || !mission.location) {
+      return [];
+    }
+
     const result = await this.missionsRepository.manager
       .createQueryBuilder(User, 'user')
       .where('user.role IN (:...roles)', {
@@ -165,10 +177,10 @@ export class MissionsService {
       .andWhere(
         `ST_DWithin(
           user.location::geography,
-          ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+          (SELECT location FROM missions WHERE id = :missionId)::geography,
           :radius
         )`,
-        { lng, lat, radius: radiusKm * 1000 },
+        { missionId, radius: radiusKm * 1000 },
       )
       .orderBy(
         `CASE WHEN user.role = 'PREMIUM_PROVIDER' THEN 0 ELSE 1 END`,
@@ -222,7 +234,20 @@ export class MissionsService {
     }
 
     mission.status = newStatus;
-    return this.missionsRepository.save(mission);
+    const savedMission = await this.missionsRepository.save(mission);
+
+    if (newStatus === MissionStatus.PUBLISHED) {
+      const radiusKm = 50; // Default radius to 50km
+      const nearbyProviders = await this.findNearbyProviders(missionId, radiusKm);
+      if (nearbyProviders.length > 0) {
+        await this.notificationsService.notifyNearbyProviders(
+          nearbyProviders,
+          savedMission,
+        );
+      }
+    }
+
+    return savedMission;
   }
 
   // --- Applications ---
@@ -306,24 +331,45 @@ export class MissionsService {
       throw new NotFoundException('Application not found');
     }
 
-    // Accept the chosen application
-    application.status = ApplicationStatus.ACCEPTED;
-    await this.applicationsRepository.save(application);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    // Reject all other applications
-    await this.applicationsRepository
-      .createQueryBuilder()
-      .update(MissionApplication)
-      .set({ status: ApplicationStatus.REJECTED })
-      .where('missionId = :missionId', { missionId })
-      .andWhere('id != :applicationId', { applicationId })
-      .andWhere('status = :pending', { pending: ApplicationStatus.PENDING })
-      .execute();
+    try {
+      // Accept the chosen application
+      application.status = ApplicationStatus.ACCEPTED;
+      await queryRunner.manager.save(application);
 
-    // Assign provider and transition to ASSIGNED
-    mission.provider = application.provider;
-    mission.status = MissionStatus.ASSIGNED;
+      // Reject all other applications
+      await queryRunner.manager
+        .createQueryBuilder()
+        .update(MissionApplication)
+        .set({ status: ApplicationStatus.REJECTED })
+        .where('missionId = :missionId', { missionId })
+        .andWhere('id != :applicationId', { applicationId })
+        .andWhere('status = :pending', { pending: ApplicationStatus.PENDING })
+        .execute();
 
-    return this.missionsRepository.save(mission);
+      // Assign provider and transition to ASSIGNED
+      mission.provider = application.provider;
+      mission.status = MissionStatus.ASSIGNED;
+      const savedMission = await queryRunner.manager.save(mission);
+
+      // Trigger payment hold via PaymentsService
+      // If this throws, the catch block will rollback the database transaction
+      await this.paymentsService.createPaymentIntent(
+        savedMission,
+        client,
+        application.provider,
+      );
+
+      await queryRunner.commitTransaction();
+      return savedMission;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

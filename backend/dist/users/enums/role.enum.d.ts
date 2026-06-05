@@ -1,6 +1,0 @@
-export declare enum Role {
-    CLIENT = "CLIENT",
-    PROVIDER = "PROVIDER",
-    PREMIUM_PROVIDER = "PREMIUM_PROVIDER",
-    ADMIN = "ADMIN"
-}

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { MapPin, ArrowLeft, Send, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
+import api from '@/services/api';
 
 export default function ApplyMissionPage() {
   const params = useParams();
@@ -13,27 +14,38 @@ export default function ApplyMissionPage() {
   const [loading, setLoading] = useState(false);
   const [applied, setApplied] = useState(false);
 
-  // Mock mission data
-  const mission = {
-    id,
-    title: 'Aide pour déménagement (canapé)',
-    description: 'Bonjour, j\'ai besoin d\'aide pour descendre un canapé du 3ème étage (sans ascenseur). Il faut être deux. C\'est assez urgent pour ce samedi matin.',
-    price: 40,
-    clientName: 'Martin D.',
-    location: 'Paris 11e (à 1.2 km)',
-    createdAt: new Date().toISOString()
-  };
+  const [mission, setMission] = useState<any>(null);
+  const [initLoading, setInitLoading] = useState(true);
 
-  const handleApply = (e: React.FormEvent) => {
+  useEffect(() => {
+    api.get(`/missions/${id}`)
+      .then(res => setMission(res.data))
+      .catch(console.error)
+      .finally(() => setInitLoading(false));
+  }, [id]);
+
+  const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await api.post(`/missions/${id}/apply`, { coverMessage: message });
       setApplied(true);
-    }, 1500);
+    } catch (err) {
+      console.error(err);
+      alert('Une erreur est survenue lors de la candidature.');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (initLoading) {
+    return <div className="text-center py-20 font-medium">Chargement de la mission...</div>;
+  }
+
+  if (!mission) {
+    return <div className="text-center py-20 font-medium text-red-500">Mission introuvable</div>;
+  }
 
   if (applied) {
     return (
@@ -44,7 +56,7 @@ export default function ApplyMissionPage() {
           </div>
           <h2 className="text-3xl font-black text-gray-900 mb-4 tracking-tight">Candidature envoyée !</h2>
           <p className="text-lg text-gray-600 mb-8 font-medium">
-            Votre proposition a été transmise à {mission.clientName}. Vous serez notifié s'il accepte votre aide.
+            Votre proposition a été transmise à {mission.client?.firstName}. Vous serez notifié s'il accepte votre aide.
           </p>
           <button 
             onClick={() => router.push('/dashboard/provider')}
@@ -74,10 +86,10 @@ export default function ApplyMissionPage() {
             
             <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-gray-500 mb-6">
               <span className="flex items-center bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                <MapPin size={16} className="mr-2 text-gray-400" /> {mission.location}
+                <MapPin size={16} className="mr-2 text-gray-400" /> {mission.address || 'Non précisé'}
               </span>
               <span className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg font-bold border border-blue-100">
-                Par {mission.clientName}
+                Par {mission.client?.firstName} {mission.client?.lastName?.charAt(0)}.
               </span>
             </div>
 
@@ -94,7 +106,7 @@ export default function ApplyMissionPage() {
             
             <form onSubmit={handleApply}>
               <div className="mb-6">
-                <label className="block text-sm font-bold text-gray-700 mb-2">Message pour {mission.clientName}</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Message pour {mission.client?.firstName}</label>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}

@@ -23,18 +23,25 @@ export default function ProviderDashboardPage() {
   const [missions, setMissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Mock nearby missions for presentation
-  const mockMissions = [
-    { id: 'm1', title: 'Aide pour déménagement (canapé)', price: 40, distance: '1.2 km', latitude: 48.86, longitude: 2.34, status: 'PUBLISHED' },
-    { id: 'm2', title: 'Tondre la pelouse', price: 25, distance: '2.5 km', latitude: 48.85, longitude: 2.36, status: 'PUBLISHED' },
-    { id: 'm3', title: 'Réparation ordinateur (Windows lent)', price: 30, distance: '3.1 km', latitude: 48.87, longitude: 2.33, status: 'PUBLISHED' },
-  ];
-
   useEffect(() => {
-    // In a real app we'd fetch from API
-    // const fetchMissions = async () => { ... }
-    setMissions(mockMissions);
-    setLoading(false);
+    const fetchMissions = async () => {
+      try {
+        const response = await api.get('/missions/published');
+        const fetchedMissions = response.data.map((m: any) => ({
+          ...m,
+          // Extract lat/lng from PostGIS Point if available, else fallback to mock Paris coords
+          latitude: m.location?.coordinates?.[1] || 48.8566 + (Math.random() - 0.5) * 0.02,
+          longitude: m.location?.coordinates?.[0] || 2.3522 + (Math.random() - 0.5) * 0.02,
+          distance: m.address ? 'À proximité' : 'Non précisé'
+        }));
+        setMissions(fetchedMissions);
+      } catch (err) {
+        console.error('Failed to fetch missions', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMissions();
   }, []);
 
   return (

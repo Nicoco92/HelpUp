@@ -21,7 +21,7 @@ export default function ClientMissionsPage() {
   useEffect(() => {
     const fetchMissions = async () => {
       try {
-        const response = await api.get('/missions/my-missions');
+        const response = await api.get('/missions/my');
         setMissions(response.data);
       } catch (err) {
         console.error(err);

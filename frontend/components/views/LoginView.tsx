@@ -22,7 +22,7 @@ export default function LoginPage() {
       const response = await api.post('/auth/login', data);
       const { access_token, user } = response.data;
       setAuth(access_token, user);
-      
+
       const rolePath = user.role?.toLowerCase() || 'client';
       router.push(`/dashboard/${rolePath}`);
     } catch (err: any) {
@@ -41,13 +41,13 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-3xl shadow-xl z-10 border border-gray-100">
         <div>
           <h2 className="mt-2 text-center text-3xl font-black text-gray-900 tracking-tight">
-            Content de vous revoir 👋
+            Content de vous revoir
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600 font-medium">
             Connectez-vous pour accéder à votre espace
           </p>
         </div>
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           {apiError && (
             <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md flex items-start space-x-3">
@@ -133,7 +133,7 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-        
+
         <div className="text-center mt-6">
           <p className="text-sm text-gray-600 font-medium">
             Pas encore de compte ?{' '}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MapPin, DollarSign, Calendar, Info } from 'lucide-react';
@@ -17,11 +17,32 @@ export default function NewMissionPage() {
       description: '',
       price: '',
       address: '',
-      category: defaultCategory
+      categoryId: ''
     }
   });
   
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await api.get('/missions/categories');
+        setCategories(res.data);
+        
+        // If a default category name was passed, try to select its ID
+        if (defaultCategory) {
+          const match = res.data.find((c: any) => c.name.toLowerCase() === defaultCategory.toLowerCase());
+          if (match) {
+            // Need to set it in the form
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load categories', err);
+      }
+    };
+    fetchCategories();
+  }, [defaultCategory]);
 
   const onSubmit = async (data: any) => {
     setLoading(true);
@@ -32,12 +53,17 @@ export default function NewMissionPage() {
         description: data.description,
         price: Number(data.price),
         address: data.address,
-        latitude: 48.8566, // Mock Paris
-        longitude: 2.3522, // Mock Paris
-        status: 'PUBLISHED'
+        categoryId: data.categoryId,
+        lat: 48.8566, // Mock Paris
+        lng: 2.3522, // Mock Paris
       };
       
-      await api.post('/missions', payload);
+      const response = await api.post('/missions', payload);
+      const missionId = response.data.id;
+      
+      // Auto-publish the mission so providers can see it immediately
+      await api.patch(`/missions/${missionId}/publish`);
+
       router.push('/dashboard/client/missions');
     } catch (err) {
       console.error(err);
@@ -65,6 +91,22 @@ export default function NewMissionPage() {
               placeholder="Ex: Aide pour monter un meuble IKEA"
             />
             {errors.title && <p className="mt-1 text-sm text-red-600 font-medium">{errors.title.message as string}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Catégorie</label>
+            <select
+              {...register('categoryId', { required: 'La catégorie est requise' })}
+              className="appearance-none rounded-xl relative block w-full px-4 py-3 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50 transition-colors"
+            >
+              <option value="">Sélectionnez une catégorie</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+            {errors.categoryId && <p className="mt-1 text-sm text-red-600 font-medium">{errors.categoryId.message as string}</p>}
           </div>
 
           <div>

@@ -18,6 +18,7 @@ export default function RegisterPage() {
   const [selectedRole, setSelectedRole] = useState<Role | null>(initialRole);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState('');
+  const [availableSkills, setAvailableSkills] = useState<any[]>([]);
   
   const { register, handleSubmit, formState: { errors }, watch } = useForm();
   const setAuth = useAuthStore((state) => state.setAuth);
@@ -26,6 +27,9 @@ export default function RegisterPage() {
   const handleRoleSelect = (role: Role) => {
     setSelectedRole(role);
     setStep(2);
+    if (role === 'PROVIDER') {
+      api.get('/users/skills').then(res => setAvailableSkills(res.data)).catch(console.error);
+    }
   };
 
   const onSubmit = async (data: any) => {
@@ -33,15 +37,24 @@ export default function RegisterPage() {
     setApiError('');
     try {
       const payload = {
-        ...data,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        password: data.password,
         role: selectedRole,
-        // If provider, split tags string into an array
-        skills: selectedRole === 'PROVIDER' && data.skills ? data.skills.split(',').map((s: string) => s.trim()) : [],
+        ...(selectedRole === 'PROVIDER' && { dateOfBirth: data.dateOfBirth })
       };
       
-      const response = await api.post('/auth/register', payload);
+      const response = await api.post('/auth/signup', payload);
       const { access_token, user } = response.data;
       setAuth(access_token, user);
+
+      if (selectedRole === 'PROVIDER' && data.skills && data.skills.length > 0) {
+        // Configure api instance with new token immediately for the next request
+        api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+        // data.skills is already an array of selected IDs from the checkboxes
+        await api.post('/users/me/skills', { skillIds: Array.isArray(data.skills) ? data.skills : [data.skills] });
+      }
       
       router.push(`/dashboard/${selectedRole?.toLowerCase()}`);
     } catch (err: any) {
@@ -147,25 +160,43 @@ export default function RegisterPage() {
               <label className="block text-sm font-semibold text-gray-700 mb-1">Mot de passe</label>
               <input
                 type="password"
-                {...register('password', { required: 'Ce champ est requis', minLength: { value: 6, message: 'Minimum 6 caractères' } })}
+                {...register('password', { required: 'Ce champ est requis', minLength: { value: 8, message: 'Minimum 8 caractères' } })}
                 className="appearance-none rounded-xl relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-50 transition-colors"
               />
               {errors.password && <p className="mt-1 text-sm text-red-600 font-medium">{errors.password.message as string}</p>}
             </div>
 
             {selectedRole === 'PROVIDER' && (
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  Vos compétences (séparées par des virgules)
-                </label>
-                <input
-                  type="text"
-                  {...register('skills', { required: 'Merci d\'indiquer au moins une compétence' })}
-                  placeholder="Ex: Bricolage, Jardinage, Déménagement"
-                  className="appearance-none rounded-xl relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-gray-50 transition-colors"
-                />
-                {errors.skills && <p className="mt-1 text-sm text-red-600 font-medium">{errors.skills.message as string}</p>}
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Date de naissance</label>
+                  <input
+                    type="date"
+                    {...register('dateOfBirth', { required: 'La date de naissance est requise' })}
+                    className="appearance-none rounded-xl relative block w-full px-3 py-3 border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-gray-50 transition-colors"
+                  />
+                  {errors.dateOfBirth && <p className="mt-1 text-sm text-red-600 font-medium">{errors.dateOfBirth.message as string}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Vos compétences (sélectionnez au moins une)
+                  </label>
+                  <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-xl bg-gray-50">
+                    {availableSkills.map((skill) => (
+                      <label key={skill.id} className="flex items-center space-x-3 bg-white p-2 rounded-lg border border-gray-100 shadow-sm cursor-pointer hover:border-indigo-300">
+                        <input
+                          type="checkbox"
+                          value={skill.id}
+                          {...register('skills', { required: 'Merci d\'indiquer au moins une compétence' })}
+                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm font-medium text-gray-700">{skill.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {errors.skills && <p className="mt-1 text-sm text-red-600 font-medium">{errors.skills.message as string}</p>}
+                </div>
+              </>
             )}
 
             <div className="pt-2 flex justify-between">
